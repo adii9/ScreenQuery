@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: rgba(30, 30, 30, 0.95);
+      color: #fff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
+      overflow: hidden;
+      -webkit-app-region: drag;
+    }
+    
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(40, 40, 40, 1);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      -webkit-app-region: drag;
+    }
+    
+    .title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .title svg {
+      width: 16px;
+      height: 16px;
+    }
+    
+    .model-badge {
+      font-size: 10px;
+      font-family: 'SF Mono', 'Menlo', monospace;
+      color: #8e8e93;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    
+    .close-btn {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: #8e8e93;
+      cursor: pointer;
+      font-size: 18px;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    
+    .close-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+    
+    .content {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      -webkit-app-region: no-drag;
+    }
+    
+    .answer-text {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #e5e5e7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    
+    .answer-text:empty::before {
+      content: 'Analyzing...';
+      color: #8e8e93;
+      font-style: italic;
+    }
+    
+    .toolbar {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: rgba(40, 40, 40, 1);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+    
+    .btn {
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+    
+    .btn-primary {
+      background: #007AFF;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #0066d6;
+    }
+    
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    
+    .spacer {
+      flex: 1;
+    }
+    
+    .copy-feedback {
+      font-size: 12px;
+      color: #30d158;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .copy-feedback.show {
+      opacity: 1;
+    }
+    
+    /* Loading animation */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .loading .answer-text {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <div class="title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/>
+        <path d="M21 21l-4.35-4.35"/>
+      </svg>
+      ScreenQuery
+      <span class="model-badge">LLaVA 1.5 · ON-DEVICE</span>
+    </div>
+    <button class="close-btn" onclick="closePanel()">×</button>
+  </div>
+  
+  <div class="content" id="content">
+    <div class="answer-text" id="answer"></div>
+  </div>
+  
+  <div class="toolbar">
+    <button class="btn btn-secondary" onclick="closePanel()">Close</button>
+    <div class="spacer"></div>
+    <span class="copy-feedback" id="copyFeedback">Copied!</span>
+    <button class="btn btn-primary" onclick="copyAnswer()">Copy</button>
+  </div>
+  
+  <script>
+    let currentAnswer = '';
+    
+    function showAnswer(text) {
+      currentAnswer = text;
+      const answerEl = document.getElementById('answer');
+      const contentEl = document.getElementById('content');
+      
+      contentEl.classList.remove('loading');
+      answerEl.textContent = text;
+    }
+    
+    function copyAnswer() {
+      if (currentAnswer) {
+        window.screenQuery.copyAnswer(currentAnswer);
+        
+        const feedback = document.getElementById('copyFeedback');
+        feedback.classList.add('show');
+        setTimeout(() => feedback.classList.remove('show'), 1500);
+      }
+    }
+    
+    function closePanel() {
+      window.screenQuery.closePanel();
+    }
+    
+    // Check if still loading (empty answer)
+    setTimeout(() => {
+      if (!currentAnswer) {
+        document.getElementById('content').classList.add('loading');
+      }
+    }, 100);
+  </script>
+</body>
+</html>

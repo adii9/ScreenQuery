@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      cursor: crosshair;
+      user-select: none;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    
+    #screenshot {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.4);
+    }
+    
+    #selection {
+      position: absolute;
+      border: 2px solid white;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+      display: none;
+      min-width: 20px;
+      min-height: 20px;
+    }
+    
+    #selection.active {
+      display: block;
+    }
+    
+    .corner {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background: white;
+      border-radius: 50%;
+    }
+    
+    .corner.tl { top: -5px; left: -5px; }
+    .corner.tr { top: -5px; right: -5px; }
+    .corner.bl { bottom: -5px; left: -5px; }
+    .corner.br { bottom: -5px; right: -5px; }
+    
+    #size-label {
+      position: absolute;
+      bottom: -28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: 'SF Mono', 'Menlo', monospace;
+      white-space: nowrap;
+    }
+    
+    #instructions {
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.75);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      text-align: center;
+      pointer-events: none;
+    }
+    
+    #instructions kbd {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+  <img id="screenshot" alt="">
+  <div id="overlay"></div>
+  <div id="selection">
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div id="size-label"></div>
+  </div>
+  <div id="instructions">
+    Drag to select a region · <kbd>Esc</kbd> to cancel · <kbd>Enter</kbd> to confirm
+  </div>
+  
+  <script>
+    const screenshot = document.getElementById('screenshot');
+    const selection = document.getElementById('selection');
+    const sizeLabel = document.getElementById('size-label');
+    const overlay = document.getElementById('overlay');
+    
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let currentRect = { x: 0, y: 0, width: 0, height: 0 };
+    
+    // Receive screenshot from main process
+    window.screenQuery.onScreenshot((dataUrl) => {
+      screenshot.src = dataUrl;
+    });
+    
+    overlay.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      selection.style.display = 'block';
+      updateSelection(e.clientX, e.clientY);
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        updateSelection(e.clientX, e.clientY);
+      }
+    });
+    
+    document.addEventListener('mouseup', (e) => {
+      if (isDragging) {
+        isDragging = false;
+        
+        // Only confirm if selection is meaningful size
+        if (currentRect.width > 10 && currentRect.height > 10) {
+          window.screenQuery.sendRegionSelected(currentRect);
+        } else {
+          window.screenQuery.sendRegionCancelled();
+        }
+      }
+    });
+    
+    function updateSelection(mouseX, mouseY) {
+      const x = Math.min(startX, mouseX);
+      const y = Math.min(startY, mouseY);
+      const width = Math.abs(mouseX - startX);
+      const height = Math.abs(mouseY - startY);
+      
+      currentRect = { x, y, width, height };
+      
+      selection.style.left = x + 'px';
+      selection.style.top = y + 'px';
+      selection.style.width = width + 'px';
+      selection.style.height = height + 'px';
+      
+      sizeLabel.textContent = `${Math.round(width)} × ${Math.round(height)}`;
+    }
+    
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        window.screenQuery.sendRegionCancelled();
+      } else if (e.key === 'Enter' && currentRect.width > 10 && currentRect.height > 10) {
+        window.screenQuery.sendRegionSelected(currentRect);
+      }
+    });
+  </script>
+</body>
+</html>

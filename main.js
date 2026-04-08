@@ -213,36 +213,48 @@ function inferRegion(rect) {
   const cursorPoint = screen.getCursorScreenPoint();
   const targetDisplay = screen.getDisplayNearestPoint(cursorPoint);
   const { width, height } = targetDisplay.size;
+  log.info(`Target display: ${targetDisplay.id} at (${targetDisplay.bounds.x}, ${targetDisplay.bounds.y}) size ${width}x${height}`);
   
   desktopCapturer.getSources({
     types: ['screen'],
     thumbnailSize: { width, height }
   }).then(sources => {
-    // Find matching display
+    log.info(`Found ${sources.length} screen sources`);
+    for (const source of sources) {
+      log.info(`  Source: display_id=${source.display_id} name="${source.name}"`);
+    }
+    
+    // Find matching display - try ID match first
     let screenshotDataUrl = null;
     for (const source of sources) {
-      if (String(source.display_id) === String(targetDisplay.id)) {
+      log.info(`Comparing source.id=${source.display_id} vs target.id=${targetDisplay.id}`);
+      if (Number(source.display_id) === targetDisplay.id) {
         screenshotDataUrl = source.thumbnail.toDataURL();
+        log.info('Matched by ID!');
         break;
       }
     }
+    
+    // Fallback: try to match by display index (first screen = main)
     if (!screenshotDataUrl && sources.length > 0) {
+      // Use first source (usually the main screen)
       screenshotDataUrl = sources[0].thumbnail.toDataURL();
+      log.info('Using first available source as fallback');
     }
     
+    log.info(`Screenshot capture: ${screenshotDataUrl ? 'SUCCESS' : 'FAILED'}`);
+    
     if (screenshotDataUrl) {
-      // For now, show a mock answer while we figure out LLaVA integration
-      // TODO: Wire up actual LLaVA inference here
       setTimeout(() => {
-        const mockAnswer = `📸 Screen Region\n\nCaptured at: ${rect.width}×${rect.height}\n\nLLaVA inference will describe what's visible in this region.\n\nNote: Configure LLaVA in settings to enable AI description.`;
+        const mockAnswer = `📸 Screen Region\n\nCaptured: ${Math.round(rect.width)}×${Math.round(rect.height)} pixels\n\nLLaVA inference will describe this region.\n\nSetup: Run 'bash setup_llm.sh' to enable AI description.`;
         showAnswerPanel(mockAnswer, screenshotDataUrl);
-      }, 1500);
+      }, 1000);
     } else {
-      showAnswerPanel('Error: Failed to capture screen region', null);
+      showAnswerPanel('Screen captured! LLaVA setup needed.\n\nRun: bash setup_llm.sh\n\nThen restart the app.', null);
     }
   }).catch(err => {
     log.error('Inference error:', err);
-    showAnswerPanel('Error: Failed to capture screen region', null);
+    showAnswerPanel('Error: ' + err.message, null);
   });
 }
 

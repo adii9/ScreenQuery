@@ -71,21 +71,28 @@ function createMainWindow() {
 }
 
 function showRegionSelector() {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.size;
+  // Get the display where the cursor currently is
+  const cursorPoint = screen.getCursorScreenPoint();
+  const targetDisplay = screen.getDisplayNearestPoint(cursorPoint);
+  const { width, height, x, y } = targetDisplay.bounds;
   
+  log.info(`Opening region selector on display at (${x}, ${y}) size ${width}x${height}`);
+  
+  // Create an opaque overlay window covering this display
+  // Use a semi-transparent dark background instead of full transparency
+  // to avoid the blacked-out fullscreen issue
   regionSelectorWindow = new BrowserWindow({
     width,
     height,
-    x: 0,
-    y: 0,
-    transparent: true,
+    x,
+    y,
+    transparent: false,
+    backgroundColor: '#00000080', // Semi-transparent black
     frame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
     movable: false,
-    fullscreen: true,
     hasShadow: false,
     opacity: 1,
     webPreferences: {
@@ -112,11 +119,25 @@ function showRegionSelector() {
 
 async function captureScreen() {
   try {
+    const cursorPoint = screen.getCursorScreenPoint();
+    const targetDisplay = screen.getDisplayNearestPoint(cursorPoint);
+    const { width, height } = targetDisplay.size;
+    
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: screen.getPrimaryDisplay().size
+      thumbnailSize: { width, height }
     });
     
+    // Find the source matching our target display
+    // desktopCapturer returns screens in order, try to match by display ID
+    for (const source of sources) {
+      // source.display_id should match our target display
+      if (String(source.display_id) === String(targetDisplay.id)) {
+        return source.thumbnail.toDataURL();
+      }
+    }
+    
+    // Fallback: if no match, use first source (usually main screen)
     if (sources.length > 0) {
       return sources[0].thumbnail.toDataURL();
     }
@@ -189,19 +210,35 @@ function inferRegion(rect) {
   log.info('Inferring region:', rect);
   
   // Get all screen sources for capture
+  const cursorPoint = screen.getCursorScreenPoint();
+  const targetDisplay = screen.getDisplayNearestPoint(cursorPoint);
+  const { width, height } = targetDisplay.size;
+  
   desktopCapturer.getSources({
     types: ['screen'],
-    thumbnailSize: screen.getPrimaryDisplay().size
+    thumbnailSize: { width, height }
   }).then(sources => {
-    if (sources.length > 0) {
-      const screenshotDataUrl = sources[0].thumbnail.toDataURL();
-      
+    // Find matching display
+    let screenshotDataUrl = null;
+    for (const source of sources) {
+      if (String(source.display_id) === String(targetDisplay.id)) {
+        screenshotDataUrl = source.thumbnail.toDataURL();
+        break;
+      }
+    }
+    if (!screenshotDataUrl && sources.length > 0) {
+      screenshotDataUrl = sources[0].thumbnail.toDataURL();
+    }
+    
+    if (screenshotDataUrl) {
       // For now, show a mock answer while we figure out LLaVA integration
       // TODO: Wire up actual LLaVA inference here
       setTimeout(() => {
         const mockAnswer = `📸 Screen Region\n\nCaptured at: ${rect.width}×${rect.height}\n\nLLaVA inference will describe what's visible in this region.\n\nNote: Configure LLaVA in settings to enable AI description.`;
         showAnswerPanel(mockAnswer, screenshotDataUrl);
       }, 1500);
+    } else {
+      showAnswerPanel('Error: Failed to capture screen region', null);
     }
   }).catch(err => {
     log.error('Inference error:', err);

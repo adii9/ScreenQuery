@@ -233,11 +233,16 @@ async function runOllamaVision(base64Image, prompt) {
   return new Promise((resolve, reject) => {
     const http = require('http');
     
+    // Moondream uses special prompt format: "Describe this image." or "[END]"
     const body = JSON.stringify({
-      model: 'llava',
-      prompt: prompt,
+      model: 'moondream',
+      prompt: prompt || "Describe this image in detail.",
       images: [base64Image],
-      stream: false
+      stream: false,
+      options: {
+        temperature: 0.7,
+        num_predict: 300
+      }
     });
     
     const options = {
@@ -258,14 +263,14 @@ async function runOllamaVision(base64Image, prompt) {
         try {
           const json = JSON.parse(data);
           if (json.response) {
-            resolve(json.response);
+            resolve(json.response.trim());
           } else if (json.error) {
             reject(new Error(json.error));
           } else {
-            reject(new Error('Unexpected response: ' + data));
+            reject(new Error('Unexpected response: ' + data.substring(0, 200)));
           }
         } catch (e) {
-          reject(new Error('Failed to parse response: ' + data));
+          reject(new Error('Failed to parse response: ' + data.substring(0, 200)));
         }
       });
     });
@@ -278,9 +283,9 @@ async function runOllamaVision(base64Image, prompt) {
       }
     });
     
-    req.setTimeout(60000, () => {
+    req.setTimeout(120000, () => {
       req.destroy();
-      reject(new Error('Inference timed out (60s)'));
+      reject(new Error('Inference timed out (120s)'));
     });
     
     req.write(body);

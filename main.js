@@ -101,16 +101,10 @@ function showRegionSelector() {
   regionSelectorWindow.loadFile('region-selector.html');
   regionSelectorWindow.setAlwaysOnTop(true, 'screen-saver');
   
-  // Capture screenshot and send to renderer to use as background
+  // Capture screenshot BEFORE showing window, then send
   captureScreenForSelector(targetDisplay).then(screenshotDataUrl => {
-    if (regionSelectorWindow && screenshotDataUrl) {
-      regionSelectorWindow.webContents.on('did-finish-load', () => {
-        regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
-      });
-      // If already loaded, send immediately
-      if (!regionSelectorWindow.webContents.isLoading()) {
-        regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
-      }
+    if (regionSelectorWindow) {
+      regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
     }
   });
   
@@ -123,18 +117,19 @@ async function captureScreenForSelector(targetDisplay) {
   try {
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width: targetDisplay.size.width, height: targetDisplay.size.height }
+      thumbnailSize: { width: targetDisplay.size.width * 2, height: targetDisplay.size.height * 2 }
     });
     
-    // Find matching source
+    log.info(`Got ${sources.length} screen sources`);
     for (const source of sources) {
-      if (Number(source.display_id) === targetDisplay.id) {
-        return source.thumbnail.toDataURL();
-      }
+      log.info(`  Source: id=${source.display_id} name="${source.name}"`);
     }
-    // Fallback to first source
+    
+    // Use first source (usually main screen)
     if (sources.length > 0) {
-      return sources[0].thumbnail.toDataURL();
+      const dataUrl = sources[0].thumbnail.toDataURL();
+      log.info(`Screenshot captured, length: ${dataUrl.length}`);
+      return dataUrl;
     }
   } catch (err) {
     log.error('Selector capture error:', err);

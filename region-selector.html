@@ -130,18 +130,25 @@
     
     // Receive screenshot from main process
     window.screenQuery.onScreenshot((dataUrl) => {
-      if (dataUrl) {
+      if (dataUrl && dataUrl.length > 1000) {
         img.src = dataUrl;
         img.onload = () => {
           loading.style.display = 'none';
         };
         img.onerror = () => {
-          loading.textContent = 'Capture unavailable - check Screen Recording permission';
+          loading.textContent = 'Capture unavailable - check Screen Recording permission in System Settings';
         };
       } else {
-        loading.textContent = 'Capture unavailable';
+        loading.textContent = 'Capture unavailable - grant Screen Recording permission';
       }
     });
+    
+    // Timeout: if no screenshot in 3 seconds, show error
+    setTimeout(() => {
+      if (loading.style.display !== 'none') {
+        loading.textContent = 'Capture timeout - check Screen Recording permission';
+      }
+    }, 3000);
     
     overlay.addEventListener('mousedown', (e) => {
       isDragging = true;

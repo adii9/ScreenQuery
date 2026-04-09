@@ -5,39 +5,25 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
-    body {
+    html, body {
       width: 100vw;
       height: 100vh;
       overflow: hidden;
       cursor: crosshair;
       user-select: none;
+      background: transparent;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
     
-    #screenshot-bg {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      filter: brightness(0.4) blur(0px);
-    }
-    
-    #overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.4);
-    }
-    
+    /* The selection box - dark overlay on everything OUTSIDE via box-shadow */
     #selection {
       position: absolute;
       border: 2px solid white;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+      /* macOS-style: dark overlay only outside the selection, transparent inside */
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
       display: none;
+      /* Let mouse events pass through the transparent selection area */
+      pointer-events: none;
     }
     
     .corner {
@@ -89,23 +75,22 @@
       font-family: inherit;
     }
     
-    #loading {
+    /* Full-screen transparent event capture layer */
+    #event-layer {
       position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: white;
-      font-size: 16px;
-      background: rgba(0,0,0,0.7);
-      padding: 12px 24px;
-      border-radius: 8px;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: -1;
     }
   </style>
 </head>
 <body>
-  <img id="screenshot-bg" alt="">
-  <div id="loading">Loading capture...</div>
-  <div id="overlay"></div>
+  <!-- Transparent event capture layer -->
+  <div id="event-layer"></div>
+  
+  <!-- Selection rectangle with box-shadow dark overlay outside -->
   <div id="selection">
     <div class="corner tl"></div>
     <div class="corner tr"></div>
@@ -113,59 +98,36 @@
     <div class="corner br"></div>
     <div id="size-label"></div>
   </div>
+  
   <div id="instructions">
     Drag to select a region · <kbd>Esc</kbd> to cancel
   </div>
   
   <script>
-    const img = document.getElementById('screenshot-bg');
     const selection = document.getElementById('selection');
     const sizeLabel = document.getElementById('size-label');
-    const overlay = document.getElementById('overlay');
-    const loading = document.getElementById('loading');
+    const eventLayer = document.getElementById('event-layer');
     
     let isDragging = false;
     let startX = 0, startY = 0;
     let currentRect = { x: 0, y: 0, width: 0, height: 0 };
     
-    // Receive screenshot from main process
-    window.screenQuery.onScreenshot((dataUrl) => {
-      if (dataUrl && dataUrl.length > 1000) {
-        img.src = dataUrl;
-        img.onload = () => {
-          loading.style.display = 'none';
-        };
-        img.onerror = () => {
-          loading.textContent = 'Capture unavailable - check Screen Recording permission in System Settings';
-        };
-      } else {
-        loading.textContent = 'Capture unavailable - grant Screen Recording permission';
-      }
-    });
-    
-    // Timeout: if no screenshot in 3 seconds, show error
-    setTimeout(() => {
-      if (loading.style.display !== 'none') {
-        loading.textContent = 'Capture timeout - check Screen Recording permission';
-      }
-    }, 3000);
-    
-    overlay.addEventListener('mousedown', (e) => {
+    // Event handlers on the transparent layer
+    eventLayer.addEventListener('mousedown', (e) => {
       isDragging = true;
       startX = e.clientX;
       startY = e.clientY;
       selection.style.display = 'block';
-      overlay.style.background = 'transparent';
       updateSelection(e.clientX, e.clientY);
     });
     
-    document.addEventListener('mousemove', (e) => {
+    eventLayer.addEventListener('mousemove', (e) => {
       if (isDragging) {
         updateSelection(e.clientX, e.clientY);
       }
     });
     
-    document.addEventListener('mouseup', (e) => {
+    eventLayer.addEventListener('mouseup', (e) => {
       if (isDragging) {
         isDragging = false;
         if (currentRect.width > 10 && currentRect.height > 10) {

@@ -18,7 +18,7 @@ Press Cmd+Shift+2 → Select region → Get AI description
 | 🤖 **Local AI** | Runs entirely on your Mac (M1/M2/M3 optimized) |
 | 🔒 **Private** | No screenshots leave your machine |
 | ⚡ **Fast** | LLaVA via Ollama, Apple Silicon GPU accelerated |
-| 💰 **One-time $15** | No subscription, pay once |
+
 
 ---
 
@@ -123,12 +123,6 @@ npm start
 # Build .app bundle
 npm run build
 ```
-
----
-
-## 📦 Pricing
-
-**$15 one-time** — Pay once, use forever. No subscription.
 
 ---
 

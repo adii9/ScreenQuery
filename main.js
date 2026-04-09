@@ -296,8 +296,8 @@ async function runOllamaVision(base64Image, prompt) {
       images: [base64Image],
       stream: false,
       options: {
-        temperature: 0.3,
-        num_predict: 300
+        temperature: 0.1,
+        num_predict: 400
       }
     });
     
@@ -414,9 +414,15 @@ async function inferRegion(rect) {
     // Show panel with Analyzing...
     showAnswerPanel("Analyzing...", screenshotDataUrl);
     
-    // Call Ollama with vision model
+    // Call Ollama with vision model - structured response format
     const imageToSend = croppedBase64 || base64Data;
-    const llavaResponse = await runOllamaVision(imageToSend, `Describe exactly what you see in this screenshot. List all visible text, UI elements, icons, and their positions. Be specific and accurate.`);
+    const llavaResponse = await runOllamaVision(imageToSend, `You are analyzing a screen capture. Respond in this format:
+
+TEXT: Extract ALL readable text verbatim (commands, errors, logs, UI labels)
+UI ELEMENTS: List visible UI components (buttons, windows, panels, icons)  
+SUMMARY: What is happening on screen in 1-2 sentences
+
+Be precise and only describe what is actually visible. Do not invent or assume details.`);
     const answer = `📸 ${Math.round(rect.width)}×${Math.round(rect.height)} pixels\n\n${llavaResponse}`;
     updateAnswerPanel(answer);
     

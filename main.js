@@ -78,63 +78,79 @@ function showRegionSelector() {
   
   log.info(`Opening region selector on display at (${x}, ${y}) size ${width}x${height}`);
   
-  regionSelectorWindow = new BrowserWindow({
-    width,
-    height,
-    x,
-    y,
-    transparent: false,
-    frame: false,
-    backgroundColor: '#1a1a1a',
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    movable: false,
-    hasShadow: false,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
-    }
-  });
+  // CAPTURE FIRST - before showing window to avoid race conditions
+  const sources = screen.getAllDisplays ? screen.getAllDisplays() : [targetDisplay];
   
-  regionSelectorWindow.loadFile('region-selector.html');
-  regionSelectorWindow.setAlwaysOnTop(true, 'screen-saver');
-  
-  // Capture screenshot BEFORE showing window, then send
-  captureScreenForSelector(targetDisplay).then(screenshotDataUrl => {
-    if (regionSelectorWindow) {
-      regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
-    }
-  });
-  
-  regionSelectorWindow.on('closed', () => {
-    regionSelectorWindow = null;
-  });
-}
-
-async function captureScreenForSelector(targetDisplay) {
-  try {
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: targetDisplay.size.width * 2, height: targetDisplay.size.height * 2 }
+  desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: width * 2, height: height * 2 }
+  }).then(capturedSources => {
+    log.info(`getSources returned ${capturedSources.length} sources`);
+    
+    const screenshotDataUrl = capturedSources.length > 0 ? capturedSources[0].thumbnail.toDataURL() : null;
+    log.info(`Screenshot: ${screenshotDataUrl ? 'captured (' + screenshotDataUrl.length + ' chars)' : 'FAILED'}`);
+    
+    // NOW create and show window
+    regionSelectorWindow = new BrowserWindow({
+      width,
+      height,
+      x,
+      y,
+      transparent: false,
+      frame: false,
+      backgroundColor: '#1a1a1a',
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      hasShadow: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js')
+      }
     });
     
-    log.info(`Got ${sources.length} screen sources`);
-    for (const source of sources) {
-      log.info(`  Source: id=${source.display_id} name="${source.name}"`);
-    }
+    regionSelectorWindow.loadFile('region-selector.html');
+    regionSelectorWindow.setAlwaysOnTop(true, 'screen-saver');
     
-    // Use first source (usually main screen)
-    if (sources.length > 0) {
-      const dataUrl = sources[0].thumbnail.toDataURL();
-      log.info(`Screenshot captured, length: ${dataUrl.length}`);
-      return dataUrl;
-    }
-  } catch (err) {
-    log.error('Selector capture error:', err);
-  }
-  return null;
+    // Send screenshot once window is ready
+    regionSelectorWindow.webContents.once('did-finish-load', () => {
+      log.info('Region selector HTML loaded, sending screenshot');
+      regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
+    });
+    
+    regionSelectorWindow.on('closed', () => {
+      regionSelectorWindow = null;
+    });
+  }).catch(err => {
+    log.error('Capture failed:', err);
+    // Show window even without screenshot
+    regionSelectorWindow = new BrowserWindow({
+      width,
+      height,
+      x,
+      y,
+      transparent: false,
+      frame: false,
+      backgroundColor: '#1a1a1a',
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      hasShadow: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js')
+      }
+    });
+    regionSelectorWindow.loadFile('region-selector.html');
+    regionSelectorWindow.setAlwaysOnTop(true, 'screen-saver');
+    regionSelectorWindow.webContents.once('did-finish-load', () => {
+      regionSelectorWindow.webContents.send('screenshot', null);
+    });
+  });
 }
 
 async function captureScreen() {

@@ -54,6 +54,19 @@
       border-radius: 10px;
     }
     
+    .loading-dots::after {
+      content: '';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+    
+    @keyframes dots {
+      0% { content: ''; }
+      25% { content: '.'; }
+      50% { content: '..'; }
+      75% { content: '...'; }
+      100% { content: ''; }
+    }
+    
     .close-btn {
       -webkit-app-region: no-drag;
       background: none;
@@ -91,7 +104,7 @@
     }
     
     .answer-text:empty::before {
-      content: 'Analyzing...';
+      content: 'Analyzing';
       color: #8e8e93;
       font-style: italic;
     }
@@ -168,7 +181,7 @@
         <path d="M21 21l-4.35-4.35"/>
       </svg>
       ScreenQuery
-      <span class="model-badge">LLaVA 1.5 · ON-DEVICE</span>
+      <span class="model-badge">Moondream · ON-DEVICE</span>
     </div>
     <button class="close-btn" onclick="closePanel()">×</button>
   </div>

@@ -183,10 +183,16 @@ async function captureScreen() {
   return null;
 }
 
+let pendingAnswer = null;
+let pendingImagePath = null;
+
 function showAnswerPanel(answer, imagePath) {
   if (panelWindow) {
     panelWindow.close();
   }
+  
+  pendingAnswer = answer;
+  pendingImagePath = imagePath;
   
   panelWindow = new BrowserWindow({
     width: 500,
@@ -206,7 +212,8 @@ function showAnswerPanel(answer, imagePath) {
   panelWindow.loadFile('answer-panel.html');
   
   panelWindow.webContents.on('did-finish-load', () => {
-    panelWindow.webContents.executeJavaScript(`showAnswer(${JSON.stringify(answer)})`);
+    // Show "Analyzing..." immediately
+    panelWindow.webContents.executeJavaScript(`showAnswer("Analyzing...")`);
     panelWindow.show();
     panelWindow.center();
     state = 'showing';
@@ -215,7 +222,15 @@ function showAnswerPanel(answer, imagePath) {
   panelWindow.on('closed', () => {
     panelWindow = null;
     state = 'idle';
+    pendingAnswer = null;
+    pendingImagePath = null;
   });
+}
+
+function updateAnswerPanel(answer) {
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    panelWindow.webContents.executeJavaScript(`showAnswer(${JSON.stringify(answer)})`);
+  }
 }
 
 async function startCapture() {
@@ -233,15 +248,15 @@ async function runOllamaVision(base64Image, prompt) {
   return new Promise((resolve, reject) => {
     const http = require('http');
     
-    // Moondream uses special prompt format: "Describe this image." or "[END]"
+    // Moondream prompt tuned for screen screenshots
     const body = JSON.stringify({
       model: 'moondream',
-      prompt: prompt || "Describe this image in detail.",
+      prompt: prompt || "Describe exactly what you see in this screenshot. List all visible text, UI elements, icons, and their positions. Be specific and accurate.",
       images: [base64Image],
       stream: false,
       options: {
-        temperature: 0.7,
-        num_predict: 300
+        temperature: 0.3,
+        num_predict: 200
       }
     });
     
@@ -336,13 +351,16 @@ function inferRegion(rect) {
       // Extract base64 from data URL
       const base64Data = screenshotDataUrl.replace(/^data:image\/\w+;base64,/, '');
       
+      // Show panel immediately with "Analyzing..."
+      showAnswerPanel("Analyzing...", screenshotDataUrl);
+      
       // Call Ollama with vision model
-      runOllamaVision(base64Data, `Describe what you see in this image. Be concise but detailed. Focus on the key content visible.`).then(llavaResponse => {
+      runOllamaVision(base64Data, `Describe exactly what you see in this screenshot. List all visible text, UI elements, icons, and their positions. Be specific and accurate.`).then(llavaResponse => {
         const answer = `📸 ${Math.round(rect.width)}×${Math.round(rect.height)} pixels\n\n${llavaResponse}`;
-        showAnswerPanel(answer, screenshotDataUrl);
+        updateAnswerPanel(answer);
       }).catch(err => {
         log.error('Ollama error:', err);
-        showAnswerPanel(`Error: ${err.message}\n\nMake sure Ollama is running: ollama serve`, null);
+        updateAnswerPanel(`Error: ${err.message}\n\nMake sure Ollama is running: ollama serve`);
       });
     } else {
       showAnswerPanel('Screen captured but could not get image data.', null);

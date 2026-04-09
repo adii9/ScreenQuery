@@ -86,8 +86,7 @@ function showRegionSelector() {
     height,
     x,
     y,
-    transparent: false,
-    backgroundColor: '#00000080', // Semi-transparent black
+    transparent: true,
     frame: false,
     alwaysOnTop: true,
     skipTaskbar: true,

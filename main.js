@@ -78,22 +78,19 @@ function showRegionSelector() {
   
   log.info(`Opening region selector on display at (${x}, ${y}) size ${width}x${height}`);
   
-  // Create an opaque overlay window covering this display
-  // Use a semi-transparent dark background instead of full transparency
-  // to avoid the blacked-out fullscreen issue
   regionSelectorWindow = new BrowserWindow({
     width,
     height,
     x,
     y,
-    transparent: true,
+    transparent: false,
     frame: false,
+    backgroundColor: '#1a1a1a',
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
     movable: false,
     hasShadow: false,
-    opacity: 1,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -104,16 +101,45 @@ function showRegionSelector() {
   regionSelectorWindow.loadFile('region-selector.html');
   regionSelectorWindow.setAlwaysOnTop(true, 'screen-saver');
   
-  regionSelectorWindow.webContents.on('did-finish-load', () => {
-    regionSelectorWindow.webContents.executeJavaScript(`
-      document.body.style.margin = '0';
-      document.body.style.overflow = 'hidden';
-    `);
+  // Capture screenshot and send to renderer to use as background
+  captureScreenForSelector(targetDisplay).then(screenshotDataUrl => {
+    if (regionSelectorWindow && screenshotDataUrl) {
+      regionSelectorWindow.webContents.on('did-finish-load', () => {
+        regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
+      });
+      // If already loaded, send immediately
+      if (!regionSelectorWindow.webContents.isLoading()) {
+        regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
+      }
+    }
   });
   
   regionSelectorWindow.on('closed', () => {
     regionSelectorWindow = null;
   });
+}
+
+async function captureScreenForSelector(targetDisplay) {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: targetDisplay.size.width, height: targetDisplay.size.height }
+    });
+    
+    // Find matching source
+    for (const source of sources) {
+      if (Number(source.display_id) === targetDisplay.id) {
+        return source.thumbnail.toDataURL();
+      }
+    }
+    // Fallback to first source
+    if (sources.length > 0) {
+      return sources[0].thumbnail.toDataURL();
+    }
+  } catch (err) {
+    log.error('Selector capture error:', err);
+  }
+  return null;
 }
 
 async function captureScreen() {
@@ -184,19 +210,7 @@ function showAnswerPanel(answer, imagePath) {
 async function startCapture() {
   if (state !== 'idle') return;
   state = 'selecting';
-  
-  // Capture current screen first
-  const screenshotDataUrl = await captureScreen();
-  
-  // Show region selector overlay
   showRegionSelector();
-  
-  // Send screenshot to renderer for display in selector
-  if (regionSelectorWindow && screenshotDataUrl) {
-    regionSelectorWindow.webContents.on('did-finish-load', () => {
-      regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
-    });
-  }
 }
 
 function showHistory() {

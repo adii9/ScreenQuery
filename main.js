@@ -131,7 +131,7 @@ function showRegionSelector() {
     // Send screenshot after DOM is ready
     regionSelectorWindow.webContents.once('did-finish-load', () => {
       log.info('Region selector HTML loaded, sending screenshot');
-      if (regionSelectorWindow && !regionSelectorWindow.isDestroyed()) {
+      if (regionSelectorWindow && !regionSelectorWindow.isDestroyed() && regionSelectorWindow.webContents) {
         regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
       }
     });

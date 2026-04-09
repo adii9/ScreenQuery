@@ -244,19 +244,60 @@ function showHistory() {
   log.info('History requested');
 }
 
+async function cropScreenshot(base64Data, rect, display) {
+  return new Promise((resolve) => {
+    try {
+      const { nativeImage } = require('electron');
+      const img = nativeImage.createFromDataURL(`data:image/png;base64,${base64Data}`);
+      const size = img.getSize();
+      
+      log.info(`Crop: img=${size.width}x${size.height}, display=${display.bounds.width}x${display.bounds.height}, rect=(${Math.round(rect.x)},${Math.round(rect.y)}) ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+      
+      // Scale factor: screenshot is 2x resolution on Retina displays
+      const scaleX = size.width / display.bounds.width;
+      const scaleY = size.height / display.bounds.height;
+      
+      // Crop coordinates
+      const cropRect = {
+        x: Math.round(rect.x * scaleX),
+        y: Math.round((display.bounds.height - rect.y - rect.height) * scaleY),
+        width: Math.round(rect.width * scaleX),
+        height: Math.round(rect.height * scaleY)
+      };
+      
+      log.info(`Crop rect: (${cropRect.x},${cropRect.y}) ${cropRect.width}x${cropRect.height}`);
+      
+      // Validate crop rect
+      if (cropRect.width <= 0 || cropRect.height <= 0 || cropRect.x < 0 || cropRect.y < 0) {
+        log.error('Invalid crop rect, using full image');
+        resolve(null);
+        return;
+      }
+      
+      const cropped = img.crop(cropRect);
+      const croppedSize = cropped.getSize();
+      log.info(`Cropped size: ${croppedSize.width}x${croppedSize.height}`);
+      resolve(cropped.toPNG().toString('base64'));
+    } catch (e) {
+      log.error('Crop error:', e.message);
+      resolve(null);
+    }
+  });
+}
+
 async function runOllamaVision(base64Image, prompt) {
   return new Promise((resolve, reject) => {
     const http = require('http');
     
-    // Moondream prompt tuned for screen screenshots
+    // LLaVA - larger model, much more accurate for screen captures
     const body = JSON.stringify({
-      model: 'moondream',
+      model: 'llava',
       prompt: prompt || "Describe exactly what you see in this screenshot. List all visible text, UI elements, icons, and their positions. Be specific and accurate.",
       images: [base64Image],
       stream: false,
       options: {
         temperature: 0.3,
-        num_predict: 200
+        num_predict: 300
       }
     });
     
@@ -351,11 +392,23 @@ function inferRegion(rect) {
       // Extract base64 from data URL
       const base64Data = screenshotDataUrl.replace(/^data:image\/\w+;base64,/, '');
       
+      // Crop the screenshot to the selected region
+      const croppedBase64 = await cropScreenshot(base64Data, rect, targetDisplay);
+      
+      // DEBUG: Save both full and cropped screenshot
+      const fs = require('fs');
+      fs.writeFileSync('/tmp/screenquery_full.png', Buffer.from(base64Data, 'base64'));
+      if (croppedBase64) {
+        fs.writeFileSync('/tmp/screenquery_cropped.png', Buffer.from(croppedBase64, 'base64'));
+        log.info(`DEBUG: Full screenshot saved to /tmp/screenquery_full.png`);
+        log.info(`DEBUG: Cropped (${Math.round(rect.width)}x${Math.round(rect.height)}) saved to /tmp/screenquery_cropped.png`);
+      }
+      
       // Show panel immediately with "Analyzing..."
       showAnswerPanel("Analyzing...", screenshotDataUrl);
       
       // Call Ollama with vision model
-      runOllamaVision(base64Data, `Describe exactly what you see in this screenshot. List all visible text, UI elements, icons, and their positions. Be specific and accurate.`).then(llavaResponse => {
+      runOllamaVision(croppedBase64 || base64Data, `Describe exactly what you see in this screenshot. List all visible text, UI elements, icons, and their positions. Be specific and accurate.`).then(llavaResponse => {
         const answer = `📸 ${Math.round(rect.width)}×${Math.round(rect.height)} pixels\n\n${llavaResponse}`;
         updateAnswerPanel(answer);
       }).catch(err => {

@@ -229,6 +229,65 @@ function showHistory() {
   log.info('History requested');
 }
 
+async function runOllamaVision(base64Image, prompt) {
+  return new Promise((resolve, reject) => {
+    const http = require('http');
+    
+    const body = JSON.stringify({
+      model: 'llava',
+      prompt: prompt,
+      images: [base64Image],
+      stream: false
+    });
+    
+    const options = {
+      hostname: '127.0.0.1',
+      port: 11434,
+      path: '/api/generate',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    };
+    
+    const req = http.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.response) {
+            resolve(json.response);
+          } else if (json.error) {
+            reject(new Error(json.error));
+          } else {
+            reject(new Error('Unexpected response: ' + data));
+          }
+        } catch (e) {
+          reject(new Error('Failed to parse response: ' + data));
+        }
+      });
+    });
+    
+    req.on('error', (e) => {
+      if (e.code === 'ECONNREFUSED') {
+        reject(new Error('Ollama not running. Start with: ollama serve'));
+      } else {
+        reject(e);
+      }
+    });
+    
+    req.setTimeout(60000, () => {
+      req.destroy();
+      reject(new Error('Inference timed out (60s)'));
+    });
+    
+    req.write(body);
+    req.end();
+  });
+}
+
 function inferRegion(rect) {
   state = 'inferring';
   log.info('Inferring region:', rect);
@@ -269,12 +328,19 @@ function inferRegion(rect) {
     log.info(`Screenshot capture: ${screenshotDataUrl ? 'SUCCESS' : 'FAILED'}`);
     
     if (screenshotDataUrl) {
-      setTimeout(() => {
-        const mockAnswer = `📸 Screen Region\n\nCaptured: ${Math.round(rect.width)}×${Math.round(rect.height)} pixels\n\nLLaVA inference will describe this region.\n\nSetup: Run 'bash setup_llm.sh' to enable AI description.`;
-        showAnswerPanel(mockAnswer, screenshotDataUrl);
-      }, 1000);
+      // Extract base64 from data URL
+      const base64Data = screenshotDataUrl.replace(/^data:image\/\w+;base64,/, '');
+      
+      // Call Ollama with vision model
+      runOllamaVision(base64Data, `Describe what you see in this image. Be concise but detailed. Focus on the key content visible.`).then(llavaResponse => {
+        const answer = `📸 ${Math.round(rect.width)}×${Math.round(rect.height)} pixels\n\n${llavaResponse}`;
+        showAnswerPanel(answer, screenshotDataUrl);
+      }).catch(err => {
+        log.error('Ollama error:', err);
+        showAnswerPanel(`Error: ${err.message}\n\nMake sure Ollama is running: ollama serve`, null);
+      });
     } else {
-      showAnswerPanel('Screen captured! LLaVA setup needed.\n\nRun: bash setup_llm.sh\n\nThen restart the app.', null);
+      showAnswerPanel('Screen captured but could not get image data.', null);
     }
   }).catch(err => {
     log.error('Inference error:', err);

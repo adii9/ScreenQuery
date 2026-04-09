@@ -10,18 +10,27 @@ if [[ "$(uname -m)" == "arm64" ]]; then
     
     # Check for mlx-lm
     if ! command -v mlx-lm &> /dev/null; then
-        echo "📦 Installing mlx-lm..."
-        pip3 install mlx-lm
+        echo "📦 Installing mlx-lm (using --user to avoid system package conflict)..."
+        pip3 install --user mlx-lm 2>&1 || pip3 install --user --break-system-packages mlx-lm 2>&1
     else
         echo "✅ mlx-lm already installed"
     fi
     
-    echo "📥 Downloading LLaVA 1.5 7B model (~6GB)..."
-    python3 -c "from mlx_lm import download; download('mlx-community/llava-v1.5-7b')"
+    # Check if model is cached
+    HF_BIN="/Users/adiimathur/Library/Python/3.14/bin/hf"
+    MLX_LM_BIN="/Users/adiimathur/Library/Python/3.14/bin/mlx_lm"
+    
+    if [ -d "$HOME/.cache/huggingface/hub/models--mlx-community--llava-v1.5-7b" ]; then
+        echo "✅ LLaVA model already downloaded"
+    else
+        echo "📥 Downloading LLaVA 1.5 7B model (~6GB)..."
+        $HF_BIN download mlx-community/llava-v1.5-7b
+        echo "✅ Model downloaded"
+    fi
     
     echo ""
     echo "✅ Setup complete!"
-    echo "LLaVA model downloaded to: ~/.cache/mlx/lm/"
+    echo "   Model location: $MODEL_DIR"
     
 else
     echo "⚠️  Intel Mac detected"
@@ -33,7 +42,6 @@ else
         cd llama.cpp
         cmake . && make llama-cli -j$(sysctl -n hw.ncpu)
         
-        # Copy to path
         mkdir -p ~/bin
         cp llama-cli ~/bin/
         
@@ -51,4 +59,4 @@ fi
 
 echo ""
 echo "🚀 Ready to run ScreenQuery!"
-echo "   Launch the app and press Cmd+Shift+2 to capture."
+echo "   Restart the app: cd ~/Projects/screenquery && npm start"

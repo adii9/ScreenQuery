@@ -384,16 +384,10 @@ async function inferRegion(rect) {
     // Show panel with Analyzing...
     showAnswerPanel("Analyzing...", screenshotDataUrl);
     
-    // Call Ollama with vision model - structured response format
+    // Call Ollama with vision model - simple 1 sentence description
     const imageToSend = croppedBase64 || base64Data;
-    const llavaResponse = await runOllamaVision(imageToSend, `You are analyzing a screen capture. Respond in this format:
-
-TEXT: Extract ALL readable text verbatim (commands, errors, logs, UI labels)
-UI ELEMENTS: List visible UI components (buttons, windows, panels, icons)  
-SUMMARY: What is happening on screen in 1-2 sentences
-
-Be precise and only describe what is actually visible. Do not invent or assume details.`);
-    const answer = `📸 ${Math.round(rect.width)}×${Math.round(rect.height)} pixels\n\n${llavaResponse}`;
+    const llavaResponse = await runOllamaVision(imageToSend, `Look at this screenshot and describe what you see in ONE clear sentence. Focus on the main content and meaning. Example: "A developer terminal showing git commit logs for a React project" or "A Discord chat window with messages about a coding task."`);
+    const answer = llavaResponse;
     updateAnswerPanel(answer);
     
   } catch (err) {

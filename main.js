@@ -78,19 +78,33 @@ function showRegionSelector() {
   
   log.info(`Opening region selector on display at (${x}, ${y}) size ${width}x${height}`);
   
-  // CAPTURE FIRST - before showing window to avoid race conditions
-  const sources = screen.getAllDisplays ? screen.getAllDisplays() : [targetDisplay];
-  
+  // CAPTURE SCREEN BEFORE creating overlay window
+  // This ensures we capture the real screen, not the overlay itself
   desktopCapturer.getSources({
     types: ['screen'],
     thumbnailSize: { width: width * 2, height: height * 2 }
-  }).then(capturedSources => {
+  }).then(async (capturedSources) => {
     log.info(`getSources returned ${capturedSources.length} sources`);
     
-    const screenshotDataUrl = capturedSources.length > 0 ? capturedSources[0].thumbnail.toDataURL() : null;
+    // Find matching display
+    let screenshotDataUrl = null;
+    for (const source of capturedSources) {
+      if (Number(source.display_id) === targetDisplay.id) {
+        screenshotDataUrl = source.thumbnail.toDataURL();
+        break;
+      }
+    }
+    if (!screenshotDataUrl && capturedSources.length > 0) {
+      screenshotDataUrl = capturedSources[0].thumbnail.toDataURL();
+    }
+    
     log.info(`Screenshot: ${screenshotDataUrl ? 'captured (' + screenshotDataUrl.length + ' chars)' : 'FAILED'}`);
     
-    // NOW create and show window
+    // Store for later use in inferRegion
+    capturedScreenshotDataUrl = screenshotDataUrl;
+    capturedDisplay = targetDisplay;
+    
+    // Now create and show overlay window
     regionSelectorWindow = new BrowserWindow({
       width,
       height,
@@ -114,44 +128,25 @@ function showRegionSelector() {
     regionSelectorWindow.loadFile('region-selector.html');
     regionSelectorWindow.setAlwaysOnTop(true, 'screen-saver');
     
-    // Send screenshot once window is ready
+    // Send screenshot after DOM is ready
     regionSelectorWindow.webContents.once('did-finish-load', () => {
       log.info('Region selector HTML loaded, sending screenshot');
-      regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
+      if (regionSelectorWindow && !regionSelectorWindow.isDestroyed()) {
+        regionSelectorWindow.webContents.send('screenshot', screenshotDataUrl);
+      }
     });
     
     regionSelectorWindow.on('closed', () => {
       regionSelectorWindow = null;
     });
+    
   }).catch(err => {
     log.error('Capture failed:', err);
-    // Show window even without screenshot
-    regionSelectorWindow = new BrowserWindow({
-      width,
-      height,
-      x,
-      y,
-      transparent: false,
-      frame: false,
-      backgroundColor: '#1a1a1a',
-      alwaysOnTop: true,
-      skipTaskbar: true,
-      resizable: false,
-      movable: false,
-      hasShadow: false,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js')
-      }
-    });
-    regionSelectorWindow.loadFile('region-selector.html');
-    regionSelectorWindow.setAlwaysOnTop(true, 'screen-saver');
-    regionSelectorWindow.webContents.once('did-finish-load', () => {
-      regionSelectorWindow.webContents.send('screenshot', null);
-    });
   });
 }
+
+let capturedScreenshotDataUrl = null;
+let capturedDisplay = null;
 
 async function captureScreen() {
   try {
@@ -354,7 +349,7 @@ async function inferRegion(rect) {
   log.info('Inferring region:', rect);
   
   try {
-    // CRITICAL: Close overlay window BEFORE capturing so we don't capture the overlay itself
+    // Close overlay window BEFORE capturing
     if (regionSelectorWindow) {
       regionSelectorWindow.close();
       regionSelectorWindow = null;
@@ -363,36 +358,11 @@ async function inferRegion(rect) {
     // Small delay to ensure overlay is gone
     await new Promise(r => setTimeout(r, 200));
     
-    // Get all screen sources for capture
-    const cursorPoint = screen.getCursorScreenPoint();
-    const targetDisplay = screen.getDisplayNearestPoint(cursorPoint);
-    const { width, height } = targetDisplay.size;
-    log.info(`Target display: ${targetDisplay.id} at (${targetDisplay.bounds.x}, ${targetDisplay.bounds.y}) size ${width}x${height}`);
+    // Use the already-captured screenshot from showRegionSelector
+    const screenshotDataUrl = capturedScreenshotDataUrl;
+    const targetDisplay = capturedDisplay;
     
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width, height }
-    });
-    
-    log.info(`Found ${sources.length} screen sources`);
-    
-    // Find matching display
-    let screenshotDataUrl = null;
-    for (const source of sources) {
-      if (Number(source.display_id) === targetDisplay.id) {
-        screenshotDataUrl = source.thumbnail.toDataURL();
-        log.info('Matched by ID!');
-        break;
-      }
-    }
-    
-    // Fallback
-    if (!screenshotDataUrl && sources.length > 0) {
-      screenshotDataUrl = sources[0].thumbnail.toDataURL();
-      log.info('Using first available source as fallback');
-    }
-    
-    if (!screenshotDataUrl) {
+    if (!screenshotDataUrl || !targetDisplay) {
       showAnswerPanel('Failed to capture screen.', null);
       return;
     }

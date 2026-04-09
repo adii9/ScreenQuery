@@ -15,14 +15,27 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
     
-    /* The selection box - dark overlay on everything OUTSIDE via box-shadow */
+    /* Screenshot background - dimmed */
+    #screenshot {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      /* Dim the screenshot so selection stands out */
+      filter: brightness(0.5) blur(0px);
+      /* No pointer events - just visual background */
+      pointer-events: none;
+    }
+    
+    /* Dark overlay only OUTSIDE the selection - like macOS screenshot */
     #selection {
       position: absolute;
       border: 2px solid white;
-      /* macOS-style: dark overlay only outside the selection, transparent inside */
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
       display: none;
-      /* Let mouse events pass through the transparent selection area */
+      /* Let clicks pass through to event layer */
       pointer-events: none;
     }
     
@@ -76,21 +89,22 @@
     }
     
     /* Full-screen transparent event capture layer */
-    #event-layer {
+    #events {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: -1;
+      z-index: 10;
+      cursor: crosshair;
     }
   </style>
 </head>
 <body>
-  <!-- Transparent event capture layer -->
-  <div id="event-layer"></div>
+  <!-- Dimmed screenshot as background -->
+  <img id="screenshot" alt="">
   
-  <!-- Selection rectangle with box-shadow dark overlay outside -->
+  <!-- Selection with dark overlay outside -->
   <div id="selection">
     <div class="corner tl"></div>
     <div class="corner tr"></div>
@@ -99,21 +113,31 @@
     <div id="size-label"></div>
   </div>
   
+  <!-- Transparent event capture -->
+  <div id="events"></div>
+  
   <div id="instructions">
     Drag to select a region · <kbd>Esc</kbd> to cancel
   </div>
   
   <script>
+    const screenshot = document.getElementById('screenshot');
     const selection = document.getElementById('selection');
     const sizeLabel = document.getElementById('size-label');
-    const eventLayer = document.getElementById('event-layer');
+    const events = document.getElementById('events');
     
     let isDragging = false;
     let startX = 0, startY = 0;
     let currentRect = { x: 0, y: 0, width: 0, height: 0 };
     
-    // Event handlers on the transparent layer
-    eventLayer.addEventListener('mousedown', (e) => {
+    // Receive screenshot from main process
+    window.screenQuery.onScreenshot((dataUrl) => {
+      if (dataUrl) {
+        screenshot.src = dataUrl;
+      }
+    });
+    
+    events.addEventListener('mousedown', (e) => {
       isDragging = true;
       startX = e.clientX;
       startY = e.clientY;
@@ -121,13 +145,13 @@
       updateSelection(e.clientX, e.clientY);
     });
     
-    eventLayer.addEventListener('mousemove', (e) => {
+    events.addEventListener('mousemove', (e) => {
       if (isDragging) {
         updateSelection(e.clientX, e.clientY);
       }
     });
     
-    eventLayer.addEventListener('mouseup', (e) => {
+    events.addEventListener('mouseup', (e) => {
       if (isDragging) {
         isDragging = false;
         if (currentRect.width > 10 && currentRect.height > 10) {

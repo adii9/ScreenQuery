@@ -8,8 +8,12 @@
     "build": "electron-builder --mac",
     "build:dir": "electron-builder --mac --dir"
   },
-  "author": "ScreenQuery",
+  "author": "Adii (https://github.com/adii9)",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adii9/ScreenQuery.git"
+  },
   "devDependencies": {
     "electron": "^33.3.1",
     "electron-builder": "^25.1.8"

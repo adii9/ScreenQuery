@@ -349,29 +349,36 @@ async function runOllamaVision(base64Image, prompt) {
   });
 }
 
-function inferRegion(rect) {
+async function inferRegion(rect) {
   state = 'inferring';
   log.info('Inferring region:', rect);
   
-  // Get all screen sources for capture
-  const cursorPoint = screen.getCursorScreenPoint();
-  const targetDisplay = screen.getDisplayNearestPoint(cursorPoint);
-  const { width, height } = targetDisplay.size;
-  log.info(`Target display: ${targetDisplay.id} at (${targetDisplay.bounds.x}, ${targetDisplay.bounds.y}) size ${width}x${height}`);
-  
-  desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: { width, height }
-  }).then(sources => {
-    log.info(`Found ${sources.length} screen sources`);
-    for (const source of sources) {
-      log.info(`  Source: display_id=${source.display_id} name="${source.name}"`);
+  try {
+    // CRITICAL: Close overlay window BEFORE capturing so we don't capture the overlay itself
+    if (regionSelectorWindow) {
+      regionSelectorWindow.close();
+      regionSelectorWindow = null;
     }
     
-    // Find matching display - try ID match first
+    // Small delay to ensure overlay is gone
+    await new Promise(r => setTimeout(r, 200));
+    
+    // Get all screen sources for capture
+    const cursorPoint = screen.getCursorScreenPoint();
+    const targetDisplay = screen.getDisplayNearestPoint(cursorPoint);
+    const { width, height } = targetDisplay.size;
+    log.info(`Target display: ${targetDisplay.id} at (${targetDisplay.bounds.x}, ${targetDisplay.bounds.y}) size ${width}x${height}`);
+    
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width, height }
+    });
+    
+    log.info(`Found ${sources.length} screen sources`);
+    
+    // Find matching display
     let screenshotDataUrl = null;
     for (const source of sources) {
-      log.info(`Comparing source.id=${source.display_id} vs target.id=${targetDisplay.id}`);
       if (Number(source.display_id) === targetDisplay.id) {
         screenshotDataUrl = source.thumbnail.toDataURL();
         log.info('Matched by ID!');
@@ -379,49 +386,44 @@ function inferRegion(rect) {
       }
     }
     
-    // Fallback: try to match by display index (first screen = main)
+    // Fallback
     if (!screenshotDataUrl && sources.length > 0) {
-      // Use first source (usually the main screen)
       screenshotDataUrl = sources[0].thumbnail.toDataURL();
       log.info('Using first available source as fallback');
     }
     
-    log.info(`Screenshot capture: ${screenshotDataUrl ? 'SUCCESS' : 'FAILED'}`);
-    
-    if (screenshotDataUrl) {
-      // Extract base64 from data URL
-      const base64Data = screenshotDataUrl.replace(/^data:image\/\w+;base64,/, '');
-      
-      // Crop the screenshot to the selected region
-      const croppedBase64 = await cropScreenshot(base64Data, rect, targetDisplay);
-      
-      // DEBUG: Save both full and cropped screenshot
-      const fs = require('fs');
-      fs.writeFileSync('/tmp/screenquery_full.png', Buffer.from(base64Data, 'base64'));
-      if (croppedBase64) {
-        fs.writeFileSync('/tmp/screenquery_cropped.png', Buffer.from(croppedBase64, 'base64'));
-        log.info(`DEBUG: Full screenshot saved to /tmp/screenquery_full.png`);
-        log.info(`DEBUG: Cropped (${Math.round(rect.width)}x${Math.round(rect.height)}) saved to /tmp/screenquery_cropped.png`);
-      }
-      
-      // Show panel immediately with "Analyzing..."
-      showAnswerPanel("Analyzing...", screenshotDataUrl);
-      
-      // Call Ollama with vision model
-      runOllamaVision(croppedBase64 || base64Data, `Describe exactly what you see in this screenshot. List all visible text, UI elements, icons, and their positions. Be specific and accurate.`).then(llavaResponse => {
-        const answer = `📸 ${Math.round(rect.width)}×${Math.round(rect.height)} pixels\n\n${llavaResponse}`;
-        updateAnswerPanel(answer);
-      }).catch(err => {
-        log.error('Ollama error:', err);
-        updateAnswerPanel(`Error: ${err.message}\n\nMake sure Ollama is running: ollama serve`);
-      });
-    } else {
-      showAnswerPanel('Screen captured but could not get image data.', null);
+    if (!screenshotDataUrl) {
+      showAnswerPanel('Failed to capture screen.', null);
+      return;
     }
-  }).catch(err => {
+    
+    // Extract base64 from data URL
+    const base64Data = screenshotDataUrl.replace(/^data:image\/\w+;base64,/, '');
+    
+    // Crop the screenshot to the selected region
+    const croppedBase64 = await cropScreenshot(base64Data, rect, targetDisplay);
+    
+    // DEBUG: Save screenshots
+    const fs = require('fs');
+    fs.writeFileSync('/tmp/screenquery_full.png', Buffer.from(base64Data, 'base64'));
+    if (croppedBase64) {
+      fs.writeFileSync('/tmp/screenquery_cropped.png', Buffer.from(croppedBase64, 'base64'));
+      log.info(`DEBUG: Full=/tmp/screenquery_full.png, Cropped=/tmp/screenquery_cropped.png`);
+    }
+    
+    // Show panel with Analyzing...
+    showAnswerPanel("Analyzing...", screenshotDataUrl);
+    
+    // Call Ollama with vision model
+    const imageToSend = croppedBase64 || base64Data;
+    const llavaResponse = await runOllamaVision(imageToSend, `Describe exactly what you see in this screenshot. List all visible text, UI elements, icons, and their positions. Be specific and accurate.`);
+    const answer = `📸 ${Math.round(rect.width)}×${Math.round(rect.height)} pixels\n\n${llavaResponse}`;
+    updateAnswerPanel(answer);
+    
+  } catch (err) {
     log.error('Inference error:', err);
     showAnswerPanel('Error: ' + err.message, null);
-  });
+  }
 }
 
 // IPC Handlers
